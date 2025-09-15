@@ -67,7 +67,6 @@ function cleanJsonString(rawString) {
 }
 
 export const uploadPDF = async (req, res) => {
-    // This function remains the same
     try {
         const user = await User.findById(req.user.id);
         if (!user) {
@@ -77,19 +76,17 @@ export const uploadPDF = async (req, res) => {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const result = await model.generateContent([
-            "You are an assistant that summarizes PDFs. " +
-            "Respond ONLY in JSON format: { \"summary\": \"short summary here\" }",
+            "You are an assistant that summarizes PDFs. Respond ONLY in JSON format: { \"summary\": \"short summary here\" }",
             fileToGenerativePart(req.file.path, "application/pdf"),
         ]);
 
         const response = await result.response;
-
         let summary = "";
         try {
             const jsonOutput = JSON.parse(cleanJsonString(response.text()));
             summary = jsonOutput.summary || "";
         } catch (e) {
-            summary = response.text(); // fallback if JSON parse fails
+            summary = response.text();
         }
 
         const pdf = await PDF.create({
@@ -101,10 +98,20 @@ export const uploadPDF = async (req, res) => {
 
         user.pdfs.push(pdf._id);
         await user.save();
+        const fileSizeInMB = req.file.size / (1024 * 1024);
+        const RAG_THRESHOLD_MB = 15;
+
+        if (fileSizeInMB > RAG_THRESHOLD_MB) {
+            console.log(`PDF size (${fileSizeInMB.toFixed(2)} MB) exceeds threshold. Triggering RAG processing.`);
+            triggerRagProcessing(pdf);
+        } else {
+            console.log(`PDF size (${fileSizeInMB.toFixed(2)} MB) is under threshold. Skipping RAG processing.`);
+        }
 
         res.status(200).json(pdf);
+
     } catch (error) {
-        console.error(error);
+        console.error("Error in uploadPDF:", error);
         res.status(500).json({ message: "Error summarizing PDF" });
     }
 };
@@ -153,132 +160,146 @@ export const deletePDF = async (req, res) => {
 
 export const chatWithPDF = async (req, res) => {
     const { message } = req.body;
-
     try {
         const pdf = await PDF.findById(req.params.id);
-
         if (!pdf || pdf.user.toString() !== req.user.id) {
             return res.status(404).json({ message: "PDF not found" });
         }
 
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
-            tools: [{ functionDeclarations: toolDeclarations }], 
-            toolConfig: {
-                functionCallingConfig: {
-                    mode: "AUTO" 
-                }
-            }
-        });
-
-        const history = pdf.chatHistory.map(entry => ({
-            role: entry.role,
-            parts: entry.parts.map(p => ({ text: p.text }))
-        }));
-
-        const systemContext = {
-            role: "user",
-            parts: [
-                {
-                    text:
-                        "You are a helpful assistant that can read web pages and answer questions about PDFs. " +
-                        "You have access to a tool called 'get_webpage_content' that can fetch content from any URL.\n\n" +
-                        "**CRITICAL FORMATTING RULE:**\n" +
-                        "You MUST ALWAYS respond in this EXACT JSON format: { \"answer\": \"your complete response here\" }\n" +
-                        "NEVER use any other JSON structure like {\"companies\": [...]} or {\"summary\": \"...\"} or any other format.\n" +
-                        "ALL responses must use the \"answer\" key only.\n\n" +
-                        "**EXAMPLES OF CORRECT FORMAT:**\n" +
-                        "- Question about companies: { \"answer\": \"The companies mentioned in this PDF are: Company A, Company B, and Company C.\" }\n" +
-                        "- Question about summary: { \"answer\": \"This PDF discusses various topics including...\" }\n" +
-                        "- Question about URL: { \"answer\": \"Based on the webpage content, this site contains...\" }\n\n" +
-                        "**IMPORTANT RULES:**\n" +
-                        "1. **ALWAYS use the get_webpage_content tool when the user provides ANY URL** (including GitHub links, articles, documentation, etc.)\n" +
-                        "2. **DO NOT refuse to access URLs** - you have the capability through your tool\n" +
-                        "3. After fetching webpage content, provide a helpful response based on what you found\n" +
-                        "4. For non-URL questions, use the PDF summary and chat history provided below\n" +
-                        "5. **MANDATORY**: Every single response must use { \"answer\": \"...\" } format - no exceptions!\n\n" +
-                        `**PDF Summary:**\n${pdf.summary || "No summary available"}\n\n` +
-                        "**Available Tools:**\n- get_webpage_content: Can fetch and read content from any webpage URL\n\n" +
-                        "Remember: No matter what the user asks, always put your complete response inside the \"answer\" field."
-                }
-            ]
-        };
-
-
-        const chat = model.startChat({
-            history: [systemContext, ...history],
-        });
-
-        pdf.chatHistory.push({ role: "user", parts: [{ text: message }] });
-        
-        const urlRegex = /(https?:\/\/[^\s]+)/g;
-        const foundUrls = message.match(urlRegex);
-
-        console.log("URLs detected in message:", foundUrls);
-
         let modelResponseText;
 
-        if (foundUrls && foundUrls.length > 0) {
-            console.log("URL detected, forcing tool usage");
-            try {
-                const toolResult = await executeTool({
-                    name: "get_webpage_content",
-                    args: { url: foundUrls[0] }
+        if (pdf.isChunked) {
+            console.log("PDF is chunked (large PDF), using RAG pipeline.");
+
+            const embeddings = new GoogleGenerativeAIEmbeddings({
+                apiKey: process.env.GEMINI_API_KEY,
+                modelName: "text-embedding-004",
+            });
+            const queryVector = await embeddings.embedQuery(message);
+
+            const relevantChunks = await PdfChunk.aggregate([
+                {
+                    $vectorSearch: {
+                        index: "idx_embedding_search",
+                        path: "embedding",
+                        queryVector: queryVector,
+                        numCandidates: 100,
+                        limit: 5,
+                        filter: { pdfId: pdf._id }
+                    },
+                },
+                { $project: { _id: 0, text: 1 } }
+            ]);
+
+            console.log(`Found ${relevantChunks.length} relevant chunks.`);
+            const context = relevantChunks.map(chunk => chunk.text).join("\n\n---\n\n");
+
+            const augmentedPrompt = `You are a helpful AI assistant. Answer the user's question based ONLY on the following context provided from a PDF document. If the answer is not in the context, say "I could not find information about that in the document."
+
+            Context:
+            ${context}
+
+            User's Question: ${message}
+
+            Your Answer (in JSON format: {"answer": "..."}):`;
+
+            const ragModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const result = await ragModel.generateContent(augmentedPrompt);
+            modelResponseText = result.response.text();
+
+        } else {
+            console.log("PDF not chunked (small PDF), using optimized pipeline.");
+
+            const needsWebTool = message.toLowerCase().includes('http') ||
+                message.toLowerCase().includes('www.') ||
+                message.toLowerCase().includes('url') ||
+                message.toLowerCase().includes('website') ||
+                message.toLowerCase().includes('link');
+
+            if (needsWebTool) {
+                const model = genAI.getGenerativeModel({
+                    model: "gemini-1.5-flash",
+                    tools: [{ functionDeclarations: toolDeclarations }],
+                    toolConfig: {
+                        functionCallingConfig: {
+                            mode: "AUTO"
+                        }
+                    }
                 });
 
-                console.log("Tool result:", toolResult);
+                const history = pdf.chatHistory.map(entry => ({
+                    role: entry.role,
+                    parts: entry.parts.map(p => ({ text: p.text }))
+                }));
 
-                const enhancedMessage = `${message}\n\nContent from ${foundUrls[0]}:\n${toolResult}`;
-                const result = await chat.sendMessage(enhancedMessage);
-                modelResponseText = result.response.text();
-            } catch (error) {
-                console.error("Error in forced tool execution:", error);
+                const systemContext = {
+                    role: "user",
+                    parts: [
+                        {
+                            text:
+                                "You are a helpful assistant that can read web pages and answer questions about PDFs. " +
+                                "You have access to a tool called 'get_webpage_content' that can fetch content from any URL.\n\n" +
+                                "**CRITICAL FORMATTING RULE:**\n" +
+                                "You MUST ALWAYS respond in this EXACT JSON format: { \"answer\": \"your complete response here\" }\n" +
+                                "NEVER use any other JSON structure.\n\n" +
+                                "**IMPORTANT RULES:**\n" +
+                                "1. **ALWAYS use the get_webpage_content tool when the user provides ANY URL**\n" +
+                                "2. After fetching webpage content, provide a helpful response based on what you found\n" +
+                                "3. For non-URL questions, use the PDF summary provided below\n" +
+                                "4. **MANDATORY**: Every response must use { \"answer\": \"...\" } format\n\n" +
+                                `**PDF Summary:**\n${pdf.summary || "No summary available"}\n\n`
+                        }
+                    ]
+                };
+
+                const chat = model.startChat({ history: [systemContext, ...history] });
                 const result = await chat.sendMessage(message);
-                modelResponseText = result.response.text();
-            }
-        } else {
-            console.log("No URLs detected, proceeding with normal chat");
-            const result = await chat.sendMessage(message);
-            const response = result.response;
+                const response = result.response;
+                const functionCall = response.candidates?.[0]?.content?.parts?.[0]?.functionCall;
 
-            const candidates = response.candidates || [];
-            const firstCandidate = candidates[0];
-            const content = firstCandidate?.content;
-            const parts = content?.parts || [];
-
-            let functionCall = null;
-            for (const part of parts) {
-                if (part.functionCall) {
-                    functionCall = part.functionCall;
-                    break;
-                }
-            }
-
-            console.log("Function call detected:", functionCall ? functionCall.name : "None");
-
-            if (functionCall) {
-                console.log("Executing function call:", functionCall);
-                const toolResult = await executeTool(functionCall);
-                console.log("Tool result length:", toolResult.length);
-
-                const finalResult = await chat.sendMessage([
-                    {
-                        functionResponse: {
-                            name: functionCall.name,
-                            response: {
+                if (functionCall) {
+                    console.log("Executing function call:", functionCall.name);
+                    const toolResult = await executeTool(functionCall);
+                    const finalResult = await chat.sendMessage([
+                        {
+                            functionResponse: {
                                 name: functionCall.name,
-                                content: toolResult,
+                                response: { name: functionCall.name, content: toolResult },
                             },
                         },
-                    },
-                ]);
-                modelResponseText = finalResult.response.text();
+                    ]);
+                    modelResponseText = finalResult.response.text();
+                } else {
+                    modelResponseText = response.text();
+                }
             } else {
-                modelResponseText = response.text();
+                const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+                const trimmedHistory = pdf.chatHistory.slice(-10).map(entry => ({
+                    role: entry.role,
+                    parts: entry.parts.map(p => ({ text: p.text }))
+                }));
+
+                const systemPrompt = `You are a helpful AI assistant. Answer questions about the PDF based on the summary and chat history provided below.
+
+**CRITICAL**: Always respond in this exact JSON format: {"answer": "your response here"}
+
+PDF Summary:
+${pdf.summary || "No summary available"}
+
+Previous conversation context:
+${trimmedHistory.map(h => `${h.role}: ${h.parts[0]?.text || ''}`).join('\n')}
+
+User Question: ${message}
+
+Response (JSON format):`;
+
+                const result = await model.generateContent(systemPrompt);
+                modelResponseText = result.response.text();
             }
         }
 
-        console.log("Final model response:", modelResponseText);
+        console.log("Model response received");
 
         let parsedResponse;
         try {
@@ -288,10 +309,15 @@ export const chatWithPDF = async (req, res) => {
             parsedResponse = { answer: modelResponseText };
         }
 
+        pdf.chatHistory.push({ role: "user", parts: [{ text: message }] });
         pdf.chatHistory.push({
             role: "model",
             parts: [{ text: JSON.stringify(parsedResponse) }],
         });
+
+        if (pdf.chatHistory.length > 50) {
+            pdf.chatHistory = pdf.chatHistory.slice(-30);
+        }
 
         await pdf.save();
         res.status(200).json(parsedResponse);
