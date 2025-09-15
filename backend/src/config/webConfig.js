@@ -16,7 +16,7 @@ export const getWebpageContent= async (url) => {
 
         let textContent = $('body').text().replace(/\s\s+/g, ' ').trim();
 
-        const maxLength = 6000;
+        const maxLength = 300;
         if (textContent.length > maxLength) {
             textContent = textContent.substring(0, maxLength) + "... (content truncated)";
         }
