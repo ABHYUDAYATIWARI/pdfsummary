@@ -12,13 +12,10 @@ export const getWebpageContent= async (url) => {
         const html = response.data;
         const $ = cheerio.load(html);
 
-        // Remove elements that don't typically contain main content
         $('script, style, nav, footer, header, aside, form').remove();
 
-        // Get text from the body, clean up whitespace, and trim
         let textContent = $('body').text().replace(/\s\s+/g, ' ').trim();
 
-        // Limit the content length to avoid overwhelming the model
         const maxLength = 6000;
         if (textContent.length > maxLength) {
             textContent = textContent.substring(0, maxLength) + "... (content truncated)";
