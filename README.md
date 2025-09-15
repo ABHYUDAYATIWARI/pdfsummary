@@ -15,6 +15,13 @@ This application is a powerful tool for document analysis, allowing users to upl
 
 Additionally, the application includes a feature for **Web Content Interaction**, which uses **mcp**-powered tools to fetch, read, and summarize content from any external URL provided by the user.
 
+## Project Resources
+Demo Video: [Link to Demo Video](https://drive.google.com/file/d/15hyZeGo0z38HYbVnUiFy4hm59KwxNea-/view)
+
+System Design Report: [Link to System Design Report](https://drive.google.com/file/d/1QdIZwoVqdCW7v4xnPGxGnh7LqKEpyCft/view)
+
+
+
 ## Features
 
 * **User Authentication**: Secure user registration and login system built with JWT and bcrypt.
