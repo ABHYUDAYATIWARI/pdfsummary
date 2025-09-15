@@ -43,9 +43,6 @@ async function executeTool(functionCall) {
     }
 }
 
-// ===================================================================
-// UTILITY FUNCTIONS (Unchanged)
-// ===================================================================
 function fileToGenerativePart(path, mimeType) {
     return {
         inlineData: {
