@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getPDFs, uploadPDF } from '../services/api';
 import toast from 'react-hot-toast';
-import { Plus, RefreshCw, FileText, ArrowRight, Inbox } from 'lucide-react';
+import { Plus, RefreshCw, FileText, ArrowRight, Inbox, Upload } from 'lucide-react';
 
 const Dashboard = () => {
   const [pdfs, setPdfs] = useState([]);
@@ -66,80 +66,137 @@ const Dashboard = () => {
   const extractName = (name) => name || 'Untitled Document';
 
   return (
-    <div className="pt-[64px]">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pt-16">
       <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-        {/* --- Upload Section --- */}
-        <div className="mb-8 p-6 bg-white rounded-lg shadow-md border">
-          <h3 className="text-xl font-semibold mb-4 text-gray-800">Upload New PDF</h3>
+        
+        {/* Header Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Document Dashboard</h1>
+          <p className="text-gray-600">Upload, manage, and chat with your PDF documents</p>
+        </div>
+
+        {/* Upload Section */}
+        <div className="mb-8 p-8 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+          <div className="flex items-center gap-3 mb-6">
+            <Upload className="h-6 w-6 text-[#8e71f8]" />
+            <h3 className="text-xl font-semibold text-gray-800">Upload New PDF</h3>
+          </div>
+          
           <div className="flex flex-col sm:flex-row items-center gap-4">
-            <input
-              id="file-upload-input"
-              type="file"
-              accept="application/pdf"
-              onChange={handleFileChange}
-              className="flex-grow w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-[#f3f0ff] file:text-[#8e71f8] hover:file:bg-[#e8e2ff]"
-            />
+            <div className="flex-grow w-full relative">
+              <input
+                id="file-upload-input"
+                type="file"
+                accept="application/pdf"
+                onChange={handleFileChange}
+                className="w-full text-sm text-gray-700 file:mr-4 file:py-3 file:px-6 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-gradient-to-r file:from-[#8e71f8] file:to-[#7e61e0] file:text-white hover:file:from-[#7e61e0] hover:file:to-[#6b4fd6] file:transition-all file:cursor-pointer cursor-pointer border border-gray-300 rounded-lg p-3 hover:border-[#8e71f8] transition-colors"
+              />
+              {selectedFile && (
+                <div className="mt-2 text-sm text-gray-600 flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Selected: {selectedFile.name}
+                </div>
+              )}
+            </div>
             <button
               onClick={handleUpload}
               disabled={isUploading || !selectedFile}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#8e71f8] hover:bg-[#7e61e0] text-white font-semibold py-2 px-5 rounded-md transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-[#8e71f8] to-[#7e61e0] hover:from-[#7e61e0] hover:to-[#6b4fd6] text-white font-semibold py-3 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:from-[#8e71f8] disabled:hover:to-[#7e61e0] shadow-sm hover:shadow-md"
             >
-              {isUploading ? 'Processing...' : 'Upload & Summarize'}
+              {isUploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Upload & Summarize
+                </>
+              )}
             </button>
           </div>
         </div>
 
-        {/* --- Display Section --- */}
-        <div className="mb-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">All Files ({pdfs.length})</h2>
+        {/* Documents Section */}
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">Your Documents</h2>
+            <p className="text-gray-600 text-sm mt-1">{pdfs.length} document{pdfs.length !== 1 ? 's' : ''} available</p>
+          </div>
           <button
             onClick={fetchPdfs}
             disabled={isLoading}
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition"
-            title="Refresh"
+            className="p-3 text-gray-600 hover:bg-white hover:text-[#8e71f8] rounded-full transition-all border border-gray-200 hover:border-[#8e71f8] shadow-sm hover:shadow-md"
+            title="Refresh documents"
           >
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
+        {/* Content Display */}
         {isLoading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8e71f8]"></div>
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-[#8e71f8] mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading your documents...</p>
+            </div>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-center">
+          <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-xl text-center shadow-sm">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <div className="h-5 w-5 bg-red-500 rounded-full"></div>
+              <h3 className="font-semibold">Error</h3>
+            </div>
             <p>{error}</p>
           </div>
         ) : pdfs.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border shadow-sm">
-            <Inbox className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-lg font-medium text-gray-900">No documents found</h3>
-            <p className="mt-1 text-sm text-gray-500">Upload your first PDF to get started.</p>
+          <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300 shadow-sm">
+            <Inbox className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No documents yet</h3>
+            <p className="text-gray-500 mb-6">Upload your first PDF to start analyzing and chatting with your documents.</p>
+            <div className="inline-flex items-center gap-2 text-[#8e71f8] font-medium">
+              <Upload className="h-4 w-4" />
+              Use the upload section above to get started
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {pdfs.map((pdf) => (
               <div
                 key={pdf._id}
-                className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-6 border flex flex-col justify-between"
+                className="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 p-6 border border-gray-200 hover:border-[#8e71f8] group"
               >
-                <div>
-                  <FileText className="h-10 w-10 text-[#8e71f8] mb-4" />
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2 break-words">
-                    {extractName(pdf.filename)}
-                  </h3>
-                  <span className="text-xs text-gray-500">
-                    Uploaded on: {new Date(pdf.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="mt-6">
-                  <Link
-                    to={`/pdf/${pdf._id}`}
-                    className="w-full inline-flex justify-center items-center gap-2 bg-[#8e71f8] hover:bg-[#7e61e0] text-white font-medium py-2 px-4 rounded-md transition text-sm"
-                  >
-                    View Details
-                    <ArrowRight size={16} />
-                  </Link>
+                <div className="flex flex-col h-full">
+                  <div className="flex-grow">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-3 bg-gradient-to-br from-[#8e71f8] to-[#7e61e0] rounded-lg shadow-sm">
+                        <FileText className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-grow min-w-0">
+                        <h3 className="text-lg font-semibold text-gray-800 truncate group-hover:text-[#8e71f8] transition-colors">
+                          {extractName(pdf.filename)}
+                        </h3>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm text-gray-500">
+                      <p>Uploaded: {new Date(pdf.createdAt).toLocaleDateString('en-US', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric' 
+                      })}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 pt-4 border-t border-gray-100">
+                    <Link
+                      to={`/pdf/${pdf._id}`}
+                      className="w-full inline-flex justify-center items-center gap-2 bg-gradient-to-r from-[#8e71f8] to-[#7e61e0] hover:from-[#7e61e0] hover:to-[#6b4fd6] text-white font-semibold py-3 px-4 rounded-lg transition-all text-sm shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                    >
+                      View & Chat
+                      <ArrowRight size={16} />
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}

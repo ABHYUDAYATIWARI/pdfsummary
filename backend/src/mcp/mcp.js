@@ -1,69 +1,62 @@
-// server.js
+// // server.js
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+// import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+// import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+// import { z } from "zod";
+// // import { getTranscript } from "youtube-transcript"; // npm install youtube-transcript
 
-// Import your custom functions from the separate helper file
-import { makeNWSRequest, formatAlert } from "./weather-api.js";
+// // Create server instance
+// const server = new McpServer({
+//   name: "youtube-transcript",
+//   version: "1.0.0",
+//   capabilities: {
+//     resources: {},
+//     tools: {},
+//   },
+// });
 
-const NWS_API_BASE = "https://api.weather.gov";
+// // Register YouTube transcript tool
+// server.tool(
+//   "get_youtube_transcript",
+//   "Fetch transcript from a YouTube video",
+//   {
+//     url: z.string().url().describe("The full YouTube video URL"),
+//   },
+//   async ({ url }) => {
+//     try {
+//       const transcript = "hello in mco";
 
-// Create server instance
-const server = new McpServer({
-  name: "weather",
-  version: "1.0.0",
-  capabilities: {
-    // Resources and tools are defined below
-    resources: {},
-    tools: {},
-  },
-});
+//       if (!transcript || transcript.length === 0) {
+//         return {
+//           content: [{ type: "text", text: "No transcript found for this video." }],
+//         };
+//       }
 
-// Register weather tools
-server.tool(
-  "get_alerts",
-  "Get weather alerts for a US state",
-  {
-    state: z.string().length(2).describe("Two-letter state code (e.g. CA, NY)"),
-  },
-  async ({ state }) => {
-    const stateCode = state.toUpperCase();
-    const alertsUrl = `${NWS_API_BASE}/alerts/active?area=${stateCode}`;
-    const alertsData = await makeNWSRequest(alertsUrl); // Using your imported function
+//       // Combine transcript into plain text
+//       const transcriptText = transcript
+//         .map((item) => item.text)
+//         .join(" ");
 
-    if (!alertsData) {
-      return {
-        content: [{ type: "text", text: "Failed to retrieve alerts data." }],
-      };
-    }
+//       return {
+//         content: [{ type: "text", text: transcriptText }],
+//       };
+//     } catch (err) {
+//       console.error("Error fetching transcript:", err);
+//       return {
+//         content: [{ type: "text", text: "Failed to fetch transcript. Please check the URL." }],
+//       };
+//     }
+//   }
+// );
 
-    const features = alertsData.features || [];
-    if (features.length === 0) {
-      return {
-        content: [{ type: "text", text: `No active alerts for ${stateCode}.` }],
-      };
-    }
+// // ===================================================================
+// //                 SERVER STARTUP AND TRANSPORT
+// // ===================================================================
+// console.log("Starting YouTube Transcript MCP server...");
 
-    const formattedAlerts = features.map(formatAlert); // Using your imported function
-    const alertsText = `Active alerts for ${stateCode}:\n\n${formattedAlerts.join("\n\n")}`;
+// const transport = new StdioServerTransport();
+// export const runServer = async () => {
+//   await server.start(transport);
+// };
 
-    return {
-      content: [{ type: "text", text: alertsText }],
-    };
-  },
-);
-
-
-// ===================================================================
-//                 SERVER STARTUP AND TRANSPORT
-// This part was missing and is required to run the server.
-// It connects your MCP server to standard input/output, which is how
-// the Gemini client will communicate with it.
-// ===================================================================
-console.log("Starting Weather MCP server...");
-
-const transport = new StdioServerTransport();
-server.listen(transport);
-
-console.log("Weather MCP server is running and listening on stdio.");
+// console.log("YouTube Transcript MCP server is running and listening on stdio.");
