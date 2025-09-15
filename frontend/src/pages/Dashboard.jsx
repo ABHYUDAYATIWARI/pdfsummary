@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getPDFs, uploadPDF } from '../services/api';
+import { getPDFs, uploadPDF, deletePDFById } from '../services/api';
 import toast from 'react-hot-toast';
-import { Plus, RefreshCw, FileText, ArrowRight, Inbox, Upload } from 'lucide-react';
+import { Plus, RefreshCw, FileText, ArrowRight, Inbox, Upload, Trash2 } from 'lucide-react';
 
 const Dashboard = () => {
   const [pdfs, setPdfs] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [deletingIds, setDeletingIds] = useState(new Set());
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
@@ -63,19 +64,41 @@ const Dashboard = () => {
     }
   };
 
+  const handleDelete = async (pdfId) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    setDeletingIds(prev => new Set(prev).add(pdfId));
+    const toastId = toast.loading('Deleting document...');
+
+    try {
+      await deletePDFById(pdfId);
+      toast.success('Document deleted successfully!', { id: toastId });
+      setPdfs(prev => prev.filter(pdf => pdf._id !== pdfId));
+    } catch (err) {
+      toast.error('Failed to delete document. Please try again.', { id: toastId });
+      console.error('Delete failed', err);
+    } finally {
+      setDeletingIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(pdfId);
+        return newSet;
+      });
+    }
+  };
+
   const extractName = (name) => name || 'Untitled Document';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pt-16">
       <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
         
-        {/* Header Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Document Dashboard</h1>
           <p className="text-gray-600">Upload, manage, and chat with your PDF documents</p>
         </div>
 
-        {/* Upload Section */}
         <div className="mb-8 p-8 bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
           <div className="flex items-center gap-3 mb-6">
             <Upload className="h-6 w-6 text-[#8e71f8]" />
@@ -118,7 +141,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Documents Section */}
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">Your Documents</h2>
@@ -134,7 +156,6 @@ const Dashboard = () => {
           </button>
         </div>
 
-        {/* Content Display */}
         {isLoading ? (
           <div className="flex justify-center items-center py-20">
             <div className="text-center">
@@ -178,6 +199,18 @@ const Dashboard = () => {
                           {extractName(pdf.filename)}
                         </h3>
                       </div>
+                      <button
+                        onClick={() => handleDelete(pdf._id)}
+                        disabled={deletingIds.has(pdf._id)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete document"
+                      >
+                        {deletingIds.has(pdf._id) ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-500"></div>
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                     <div className="space-y-2 text-sm text-gray-500">
                       <p>Uploaded: {new Date(pdf.createdAt).toLocaleDateString('en-US', { 

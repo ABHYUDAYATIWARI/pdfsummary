@@ -18,4 +18,5 @@ export const getUser = () => API.get('/users/me');
 export const uploadPDF = (formData) => API.post('/pdf', formData);
 export const getPDFs = () => API.get('/pdf');
 export const getPDFById = (id) => API.get(`/pdf/${id}`);
+export const deletePDFById = (id) => API.delete(`/pdf/${id}`);
 export const chatWithPDF = (id, message) => API.post(`/pdf/${id}/chat`, { message });

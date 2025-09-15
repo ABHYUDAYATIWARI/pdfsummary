@@ -2,58 +2,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from "fs";
 import PDF from "../models/pdfModel.js";
 import { User } from "../models/userModel.js";
-// NEW: Import axios and cheerio
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import { getWebpageContent } from "../config/webConfig.js";
 
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// ===================================================================
-// NEW & IMPROVED TOOL FUNCTION
-// ===================================================================
-
-/**
- * Fetches the content of a URL, parses the HTML, and extracts clean text.
- * @param {string} url The URL of the webpage to read.
- * @returns {Promise<string>} The extracted text content of the webpage.
- */
-async function getWebpageContent(url) {
-    try {
-        console.log(`Fetching content for: ${url}`);
-        const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
-        const html = response.data;
-        const $ = cheerio.load(html);
-
-        // Remove elements that don't typically contain main content
-        $('script, style, nav, footer, header, aside, form').remove();
-
-        // Get text from the body, clean up whitespace, and trim
-        let textContent = $('body').text().replace(/\s\s+/g, ' ').trim();
-
-        // Limit the content length to avoid overwhelming the model
-        const maxLength = 6000;
-        if (textContent.length > maxLength) {
-            textContent = textContent.substring(0, maxLength) + "... (content truncated)";
-        }
-
-        console.log(`Successfully fetched and parsed content, length: ${textContent.length} characters`);
-        return textContent;
-
-    } catch (error) {
-        console.error("Webpage fetch error:", error.message);
-        return `Failed to fetch content from the URL. Please ensure it's a valid, accessible link. Error: ${error.message}`;
-    }
-}
-
-
-// ===================================================================
-// FIXED TOOL DEFINITION FOR GEMINI
-// ===================================================================
 const toolDeclarations = [
     {
         name: "get_webpage_content",
@@ -71,9 +24,6 @@ const toolDeclarations = [
     }
 ];
 
-// ===================================================================
-// UPDATED TOOL EXECUTION HANDLER
-// ===================================================================
 async function executeTool(functionCall) {
     console.log(`Executing tool: ${functionCall.name} with args:`, functionCall.args);
 
@@ -116,9 +66,6 @@ function cleanJsonString(rawString) {
     return cleanedString.trim();
 }
 
-// ===================================================================
-// CONTROLLER FUNCTIONS
-// ===================================================================
 export const uploadPDF = async (req, res) => {
     // This function remains the same
     try {
@@ -177,6 +124,33 @@ export const getPDFById = async (req, res) => {
     }
 };
 
+export const deletePDF = async (req, res) => {
+    try {
+        const { id: pdfId } = req.params;
+
+        const pdf = await PDF.findById(pdfId);
+
+        if (!pdf || pdf.user.toString() !== req.user.id) {
+            return res.status(404).json({ message: "PDF not found or unauthorized" });
+        }
+
+        if (fs.existsSync(pdf.path)) {
+            fs.unlinkSync(pdf.path);
+            console.log(`Deleted physical file: ${pdf.path}`);
+        }
+        await PDF.findByIdAndDelete(pdfId);
+        await User.findByIdAndUpdate(req.user.id, {
+            $pull: { pdfs: pdfId },
+        });
+
+        res.status(200).json({ success: true, message: "PDF and all associated data deleted successfully." });
+
+    } catch (error) {
+        console.error("Error in deletePDF:", error);
+        res.status(500).json({ message: "Server error while deleting PDF." });
+    }
+};
+
 export const chatWithPDF = async (req, res) => {
     const { message } = req.body;
 
@@ -187,15 +161,12 @@ export const chatWithPDF = async (req, res) => {
             return res.status(404).json({ message: "PDF not found" });
         }
 
-        // ===================================================================
-        // FIXED MODEL INITIALIZATION WITH TOOLS
-        // ===================================================================
         const model = genAI.getGenerativeModel({
             model: "gemini-1.5-flash",
-            tools: [{ functionDeclarations: toolDeclarations }], // Fixed: Use the correct variable name
+            tools: [{ functionDeclarations: toolDeclarations }], 
             toolConfig: {
                 functionCallingConfig: {
-                    mode: "AUTO" // This ensures tools are called when appropriate
+                    mode: "AUTO" 
                 }
             }
         });
@@ -248,7 +219,6 @@ export const chatWithPDF = async (req, res) => {
         let modelResponseText;
 
         if (foundUrls && foundUrls.length > 0) {
-            // Force tool usage for URLs
             console.log("URL detected, forcing tool usage");
             try {
                 const toolResult = await executeTool({
@@ -258,7 +228,6 @@ export const chatWithPDF = async (req, res) => {
 
                 console.log("Tool result:", toolResult);
 
-                // Now send both the original message and the tool result to the model
                 const enhancedMessage = `${message}\n\nContent from ${foundUrls[0]}:\n${toolResult}`;
                 const result = await chat.sendMessage(enhancedMessage);
                 modelResponseText = result.response.text();
@@ -268,12 +237,10 @@ export const chatWithPDF = async (req, res) => {
                 modelResponseText = result.response.text();
             }
         } else {
-            // No URLs detected, proceed normally
             console.log("No URLs detected, proceeding with normal chat");
             const result = await chat.sendMessage(message);
             const response = result.response;
 
-            // Check for function calls in the normal flow
             const candidates = response.candidates || [];
             const firstCandidate = candidates[0];
             const content = firstCandidate?.content;

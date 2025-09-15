@@ -34,6 +34,10 @@ const pdfSchema = mongoose.Schema(
     summary: {
       type: String,
     },
+    isChunked: {
+      type: Boolean,
+      default: false,
+    },
     chatHistory: [chatMessageSchema],
   },
   {

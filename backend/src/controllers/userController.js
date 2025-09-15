@@ -55,14 +55,11 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// @desc    Authenticate a user
-// @route   POST /api/users/login
-// @access  Public
 export const loginUser = async (req, res) => {
   const { email, password } = req.body;
   const user = await User.findOne({ email });
 
-  if (user && (await bcrypt.compare(password, user.password))) {
+  if (user && (bcrypt.compare(password, user.password))) {
     const token = generateTokenAndSetCookie(user._id, res);
     res.json({
       _id: user.id,
@@ -75,11 +72,7 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// @desc    Get current user profile
-// @route   GET /api/users/me
-// @access  Private
 export const getCurrentUser = (req, res) => {
-  // The user object is attached to the request by the VerifyToken middleware
   if (req.user) {
     res.status(200).json(req.user);
   } else {
